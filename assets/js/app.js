@@ -86,10 +86,10 @@ function update_tooltip(chosen_x, chosen_y, circle_group, text_group) {
         circle_group.call(toolTip);
 
         circle_group
-            .on("mouseover", function(data) {toolTip.show(data);})
+            .on("mouseover", function(data) {toolTip.show(data, this);})
             .on("mouseout", function(data) {toolTip.hide(data);});
         text_group
-            .on("mouseover", function(data) {toolTip.show(data);})
+            .on("mouseover", function(data) {toolTip.show(data, this);})
             .on("mouseout", function(data) {tooltip.hide(data);});
         return circle_group;
 }
@@ -106,5 +106,160 @@ function make_responsive() {
         bottom: 100,
         left: 80
     };
+    // set chart area to account for margins
+    var chart_height = svg_height - margins.top - margins.bottom;
+    var chart_width = svg_width - margins.left - margins.right;
+    // svg wrapper with margins
+    var svg = d3
+        .select("#scatter")
+        .append("svg")
+        .attr("width", svg_width)
+        .attr("height", svg_height);
 
+    var chart_group = svg.append("g").attr("transform", `translate(${margins.left}, ${margins.top})`);
+    d3.csv("assets/data/data.csv").then(function(demo_data, err) {
+        if (err) throw err;
+        demo_data.forEach(function(data) {
+            data.poverty = +data.poverty;
+            data.age = +data.age;
+            data.healthcare = +data.healthcare;
+            data.income = +data.income;
+            data.smokes = +data.smokes;
+            data.obesity = +data.obesity;
+        });
+        // set the scale for axes
+        var x_linear_scale = xScale(demo_data, chosen_x, chart_width);
+        var y_linear_scale = yScale(demo_data, chosen_y, chart_height);
+        // set the axes initial state
+        var bottom_axis = d3.axisBottom(x_linear_scale);
+        var left_axis = d3.axisLeft(y_linear_scale);
+        // append the x and y axes to the svg
+        var x_axis = chart_group.append("g")
+            .attr("transform", `translate(0, ${chart_height})`)
+            .call(bottom_axis);
+        var y_axis = chart_group.append("g").call(left_axis);
+        // set up the circle markers
+        var circle_group = chart_group.selectAll("circle").data(demo_data);
+        var bind_data = circle_group.enter();
+        // make the circles and text
+        var circles = bind_data.append("circle")
+            .attr("cx", d=> x_linear_scale(d[chosen_x]))
+            .attr("cy", d=> y_linear_scale(d[chosen_y]))
+            .attr("r", 13)
+            .classed("stateCircle, true");
+
+        var circle_text = elemEnter.append("text")
+            .attr("x", d=> x_linear_scale(d[chosen_x]))
+            .attr("y", d=> y_linear_scale(d[chosen_y]))
+            .attr("dy", ".35em")
+            .text(d => d.abbr)
+            .classed("stateText", true);
+        // update circle group
+        var circle_group = update_tooltip(chosen_x, chosen_y, circles, circle_text);
+        // create label groups for x axis
+        var x_label_group = chart_group.append("g")
+            .attr("transform", `translate(${chart_width/2}, ${chart_height + 20})`);
+        var poverty_label = x_label_group.append("text")
+            .attr("x", 0)
+            .attr("y", 20)
+            .attr("value", "poverty")
+            .classed("active", true)
+            .text("% In Poverty");
+        var age_label = x_label_group.append("text")
+            .attr("x", 0)
+            .attr("y", 40)
+            .attr("value", "age")
+            .classed("inactive", true)
+            .text("Median Age");
+        var income_label = x_label_group.append("text")
+            .attr("x", 0)
+            .attr("y", 60)
+            .attr("value", "income")
+            .classed("inactive", true)
+            .text("Median Household Income");
+        // repeat above steps for y axis labels
+        var y_label_group = chart_group.append("g")
+            .attr("transform", "rotate(-90)");
+        var health_label = y_label_group.append("text")
+            .attr("x", 0 - (chart_height / 2))
+            .attr("y", 40 - margins.left)
+            .attr("dy", "1em")
+            .attr("value", "healthcare")
+            .classed("active", true)
+            .text("% Without Healthcare");
+        var smokes_label = y_label_group.append("text")
+            .attr("x", 0 - (chart_height / 2))
+            .attr("y", 20 - margins.left)
+            .attr("dy", "1em")
+            .attr("value", "smokes")
+            .classed("inactive", true)
+            .text("% Smokers");
+        var obese_label = y_label_group.append("text")
+        .attr("x", 0 - (chart_height / 2))
+        .attr("y", 0 - margins.left)
+        .attr("dy", "1em")
+        .attr("value", "obesity")
+        .classed("inactive", true)
+        .text("% Obese");
+    // listener for x axis
+        x_label_group.selectAll("text")
+            .on("click", function() {
+                chosen_x = d3.select(this).attr("value");
+                x_linear_scale = x_scale(demo_data, chosen_x, chart_width);
+                xAxis = render_x(x_linear_scale, xAxis);
+                //switch active labels
+                if (chosen_x === "poverty") {
+                    poverty_label
+                        .classed("active", true)
+                        .classed("inactive", false);
+                    age_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                    income_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                } else if (chosen_x === "age") {
+                    poverty_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                    age_label
+                        .classed("active", true)
+                        .classed("inactive", false);
+                    income_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                } else {
+                    poverty_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                    age_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                    income_label
+                        .classed("active", true)
+                        .classed("inactive", false);
+                }
+                // update circles
+                circles = render_circles(circle_group, x_linear_scale, y_linear_scale, chosen_x, chosen_y);
+                circle_group = update_tooltip(chosen_x, chosen_y, circles, circle_text);
+                circle_text = render_text(circle_text, x_linear_scale, y_linear_scale, chosen_x, chosen_y);
+            });
+    // listener for y axis
+        y_label_group.selectAll("text")
+            .on("click", function() {
+                chosen_y = d3.select(this).attr("value");
+                y_linear_scale = y_scale(demo_data, chosen_y, chart_height);
+                yAxis = render_y(y_linear_scale, yAxis);
+                // change active axis label
+                if (chosen_y === "healthcare") {
+                    health_label
+                        .classed("active", true)
+                        .classed("inactive", false);
+                    age_label
+                        .classed("active", false)
+                        .classed("inactive", true);
+                }
+            })
+
+    });
 }
